@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "encoding": "hex bytes separated by spaces",
+  "vectors": [
+    {
+      "name": "hello sequence 1",
+      "frame": "01 01 01 00 00 00"
+    },
+    {
+      "name": "text abc sequence 4660",
+      "frame": "01 10 34 12 03 00 61 62 63"
+    },
+    {
+      "name": "ack sequence 4660 on response sequence 9",
+      "frame": "01 81 09 00 03 00 34 12 00"
+    },
+    {
+      "name": "armed status sequence 1",
+      "frame": "01 80 01 00 04 00 07 01 dc 00"
+    }
+  ]
+}
