@@ -150,6 +150,19 @@ static void test_ping_refreshes_heartbeat(void) {
     assert(hardware.response_opcode == BridgepadOpcodeAck);
 }
 
+static void test_valid_input_refreshes_heartbeat(void) {
+    FakeHardware hardware = {0};
+    BridgepadCore core = make_core(&hardware);
+    connect_and_arm(&core, 1000);
+    const uint8_t text[] = "active";
+    BridgepadFrame text_frame = frame(BridgepadOpcodeTextAscii, 2, text, sizeof(text) - 1);
+
+    bridgepad_core_handle_frame(&core, &text_frame, 5000);
+    bridgepad_core_tick(&core, 9000);
+
+    assert(bridgepad_core_is_armed(&core));
+}
+
 static void test_disconnect_releases_and_disarms(void) {
     FakeHardware hardware = {0};
     BridgepadCore core = make_core(&hardware);
@@ -213,6 +226,7 @@ int main(void) {
     test_rejects_input_until_armed();
     test_heartbeat_timeout_releases_input();
     test_ping_refreshes_heartbeat();
+    test_valid_input_refreshes_heartbeat();
     test_disconnect_releases_and_disarms();
     test_duplicate_command_is_not_replayed();
     test_rejects_malformed_keycode();

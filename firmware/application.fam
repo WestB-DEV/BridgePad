@@ -1,0 +1,15 @@
+App(
+    appid="bridgepad",
+    name="BridgePad",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="bridgepad_app",
+    requires=["gui"],
+    fap_libs=["ble_profile"],
+    sources=["*.c", "!tests"],
+    stack_size=4 * 1024,
+    fap_version="0.1.0",
+    fap_category="USB",
+    fap_description="Authenticated BLE to USB keyboard and mouse bridge",
+    fap_author="BridgePad Project",
+    targets=["f7"],
+)

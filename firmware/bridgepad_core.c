@@ -188,5 +188,6 @@ void bridgepad_core_handle_frame(BridgepadCore* core, const BridgepadFrame* fram
 
     core->has_last_sequence = true;
     core->last_sequence = frame->sequence;
+    core->last_heartbeat_ms = now_ms;
     bridgepad_core_ack(core, frame->sequence, BridgepadStatusOk);
 }
