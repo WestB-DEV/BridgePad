@@ -1,0 +1,16 @@
+.DS_Store
+.dart_tool/
+.idea/
+.packages
+build/
+mobile/.flutter-plugins*
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+firmware/.extapps/
+firmware/dist/
+*.fap
+*.apk
+*.jks
+*.keystore
