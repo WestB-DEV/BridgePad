@@ -120,7 +120,6 @@ class BridgepadSessionController extends ChangeNotifier {
   Future<void> pointerMove(int dx, int dy) => _sendInput(
     BridgepadOpcode.pointerMove,
     Uint8List.fromList([_signedByte(dx, allowZero: true), _signedByte(dy, allowZero: true)]),
-    withResponse: false,
   );
 
   Future<void> pointerButton(int mask, bool pressed) => _sendInput(
@@ -131,7 +130,6 @@ class BridgepadSessionController extends ChangeNotifier {
   Future<void> scroll(int amount) => _sendInput(
     BridgepadOpcode.scroll,
     Uint8List.fromList([_signedByte(amount)]),
-    withResponse: false,
   );
 
   Future<void> emergencyRelease() async {
