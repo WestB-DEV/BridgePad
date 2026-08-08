@@ -1,6 +1,7 @@
 #include "bridgepad_core.h"
 #include "bridgepad_protocol.h"
 #include "bridgepad_startup.h"
+#include "bridgepad_tx_queue.h"
 
 #include <bt/bt_service/bt.h>
 #include <furi.h>
@@ -25,6 +26,7 @@ typedef enum {
     BridgepadEventUsbConnected,
     BridgepadEventUsbDisconnected,
     BridgepadEventBleData,
+    BridgepadEventBleDataSent,
     BridgepadEventBleReset,
 } BridgepadEventType;
 
@@ -45,6 +47,7 @@ typedef struct {
     FuriHalBleProfileBase* serial_profile;
     FuriHalUsbInterface* previous_usb_config;
     BridgepadStartup startup;
+    BridgepadTxQueue tx_queue;
     bool exit_requested;
     bool display_ble_connected;
     bool display_usb_connected;
@@ -58,6 +61,8 @@ static const FuriHalUsbHidConfig bridgepad_usb_config = {
     .manuf = "BridgePad Project",
     .product = "BridgePad HID",
 };
+
+static void bridgepad_set_error(BridgepadApp* app, const char* message);
 
 static void bridgepad_queue_event(BridgepadApp* app, const BridgepadEvent* event) {
     furi_message_queue_put(app->queue, event, 0);
@@ -92,6 +97,9 @@ static uint16_t bridgepad_serial_callback(SerialServiceEvent serial_event, void*
         BridgepadEvent event = {.type = BridgepadEventBleData};
         event.data_length = MIN(serial_event.data.size, (uint16_t)sizeof(event.data));
         memcpy(event.data, serial_event.data.buffer, event.data_length);
+        bridgepad_queue_event(app, &event);
+    } else if(serial_event.event == SerialServiceEventTypeDataSent) {
+        const BridgepadEvent event = {.type = BridgepadEventBleDataSent};
         bridgepad_queue_event(app, &event);
     } else if(serial_event.event == SerialServiceEventTypesBleResetRequest) {
         const BridgepadEvent event = {.type = BridgepadEventBleReset};
@@ -145,6 +153,15 @@ static bool bridgepad_hid_scroll(void* context, int8_t delta) {
     return furi_hal_hid_mouse_scroll(delta);
 }
 
+static void bridgepad_tx_pump(BridgepadApp* app) {
+    if(!app->serial_profile) return;
+    BridgepadTxFrame* frame = bridgepad_tx_queue_peek_ready(&app->tx_queue);
+    if(!frame) return;
+    if(ble_profile_serial_tx(app->serial_profile, frame->data, frame->length)) {
+        bridgepad_tx_queue_mark_in_flight(&app->tx_queue);
+    }
+}
+
 static void bridgepad_send_frame(
     void* context,
     BridgepadOpcode opcode,
@@ -156,8 +173,10 @@ static void bridgepad_send_frame(
     uint8_t encoded[BRIDGEPAD_MAX_FRAME_SIZE];
     const size_t encoded_length = bridgepad_frame_encode(
         opcode, sequence, payload, payload_length, encoded, sizeof(encoded));
-    if(encoded_length) {
-        ble_profile_serial_tx(app->serial_profile, encoded, (uint16_t)encoded_length);
+    if(encoded_length && bridgepad_tx_queue_push(&app->tx_queue, encoded, encoded_length)) {
+        bridgepad_tx_pump(app);
+    } else if(encoded_length) {
+        bridgepad_set_error(app, "BLE response queue full");
     }
 }
 
@@ -222,6 +241,7 @@ static bool bridgepad_start_usb(void* context) {
 
 static void bridgepad_stop_bluetooth(BridgepadApp* app) {
     if(!app->bt) return;
+    bridgepad_tx_queue_reset(&app->tx_queue);
     bt_set_status_changed_callback(app->bt, NULL, NULL);
     bt_disconnect(app->bt);
     furi_delay_ms(200);
@@ -284,6 +304,7 @@ static void bridgepad_try_start_hardware(BridgepadApp* app) {
 static bool bridgepad_app_init(BridgepadApp* app) {
     memset(app, 0, sizeof(*app));
     bridgepad_startup_init(&app->startup);
+    bridgepad_tx_queue_init(&app->tx_queue);
     app->queue = furi_message_queue_alloc(BRIDGEPAD_QUEUE_DEPTH, sizeof(BridgepadEvent));
     if(!app->queue) return false;
     app->display_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
@@ -361,12 +382,14 @@ static void bridgepad_handle_event(BridgepadApp* app, const BridgepadEvent* even
         bridgepad_handle_input(app, &event->input);
         break;
     case BridgepadEventBleConnected:
+        bridgepad_tx_queue_reset(&app->tx_queue);
         bridgepad_reclaim_serial_profile(app);
         bridgepad_core_set_ble_connected(&app->core, true, furi_get_tick());
         bridgepad_clear_error(app);
         break;
     case BridgepadEventBleDisconnected:
         bridgepad_core_set_ble_connected(&app->core, false, furi_get_tick());
+        bridgepad_tx_queue_reset(&app->tx_queue);
         break;
     case BridgepadEventUsbConnected:
         bridgepad_core_set_usb_connected(&app->core, true, furi_get_tick());
@@ -376,6 +399,10 @@ static void bridgepad_handle_event(BridgepadApp* app, const BridgepadEvent* even
         break;
     case BridgepadEventBleData:
         bridgepad_handle_data(app, event);
+        break;
+    case BridgepadEventBleDataSent:
+        bridgepad_tx_queue_complete(&app->tx_queue);
+        bridgepad_tx_pump(app);
         break;
     case BridgepadEventBleReset:
         bridgepad_core_disarm(&app->core);
@@ -397,6 +424,7 @@ int32_t bridgepad_app(void* context) {
             bridgepad_handle_event(app, &event);
         }
         bridgepad_core_tick(&app->core, furi_get_tick());
+        bridgepad_tx_pump(app);
     }
 
     bridgepad_app_free(app);
