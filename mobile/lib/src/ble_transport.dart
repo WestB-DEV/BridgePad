@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 import 'transport.dart';
@@ -24,11 +26,102 @@ class BridgepadBleDevice {
   final int rssi;
 }
 
-class BridgepadBleTransport implements BridgepadTransport {
-  BridgepadBleTransport([FlutterReactiveBle? ble])
+abstract interface class BridgepadBleClient {
+  Stream<DiscoveredDevice> scanForDevices({
+    required List<Uuid> withServices,
+    required ScanMode scanMode,
+    required bool requireLocationServicesEnabled,
+  });
+
+  Stream<ConnectionStateUpdate> connectToDevice({
+    required String id,
+    required Map<Uuid, List<Uuid>> servicesWithCharacteristicsToDiscover,
+    required Duration connectionTimeout,
+  });
+
+  Stream<List<int>> subscribeToCharacteristic(
+    QualifiedCharacteristic characteristic,
+  );
+
+  Future<int> requestMtu({required String deviceId, required int mtu});
+
+  Future<void> writeCharacteristicWithResponse(
+    QualifiedCharacteristic characteristic, {
+    required List<int> value,
+  });
+
+  Future<void> writeCharacteristicWithoutResponse(
+    QualifiedCharacteristic characteristic, {
+    required List<int> value,
+  });
+}
+
+class FlutterReactiveBleClient implements BridgepadBleClient {
+  FlutterReactiveBleClient([FlutterReactiveBle? ble])
     : _ble = ble ?? FlutterReactiveBle();
 
   final FlutterReactiveBle _ble;
+
+  @override
+  Stream<DiscoveredDevice> scanForDevices({
+    required List<Uuid> withServices,
+    required ScanMode scanMode,
+    required bool requireLocationServicesEnabled,
+  }) => _ble.scanForDevices(
+    withServices: withServices,
+    scanMode: scanMode,
+    requireLocationServicesEnabled: requireLocationServicesEnabled,
+  );
+
+  @override
+  Stream<ConnectionStateUpdate> connectToDevice({
+    required String id,
+    required Map<Uuid, List<Uuid>> servicesWithCharacteristicsToDiscover,
+    required Duration connectionTimeout,
+  }) => _ble.connectToDevice(
+    id: id,
+    servicesWithCharacteristicsToDiscover:
+        servicesWithCharacteristicsToDiscover,
+    connectionTimeout: connectionTimeout,
+  );
+
+  @override
+  Stream<List<int>> subscribeToCharacteristic(
+    QualifiedCharacteristic characteristic,
+  ) => _ble.subscribeToCharacteristic(characteristic);
+
+  @override
+  Future<int> requestMtu({required String deviceId, required int mtu}) =>
+      _ble.requestMtu(deviceId: deviceId, mtu: mtu);
+
+  @override
+  Future<void> writeCharacteristicWithResponse(
+    QualifiedCharacteristic characteristic, {
+    required List<int> value,
+  }) => _ble.writeCharacteristicWithResponse(characteristic, value: value);
+
+  @override
+  Future<void> writeCharacteristicWithoutResponse(
+    QualifiedCharacteristic characteristic, {
+    required List<int> value,
+  }) => _ble.writeCharacteristicWithoutResponse(characteristic, value: value);
+}
+
+class BridgepadBleTransport implements BridgepadTransport {
+  BridgepadBleTransport({
+    BridgepadBleClient? client,
+    bool? negotiateMtu,
+    this.notificationSettleDelay = const Duration(milliseconds: 150),
+  }) : _client = client ?? FlutterReactiveBleClient(),
+       _negotiateMtu =
+           negotiateMtu ?? defaultTargetPlatform == TargetPlatform.android;
+
+  static const preferredMtu = 247;
+  static const minimumMtu = 229;
+
+  final BridgepadBleClient _client;
+  final bool _negotiateMtu;
+  final Duration notificationSettleDelay;
   final _messages = StreamController<Uint8List>.broadcast();
   final _connections = StreamController<bool>.broadcast();
   StreamSubscription<ConnectionStateUpdate>? _connection;
@@ -41,7 +134,7 @@ class BridgepadBleTransport implements BridgepadTransport {
   @override
   Stream<bool> get connectionChanges => _connections.stream;
 
-  Stream<BridgepadBleDevice> scan() => _ble
+  Stream<BridgepadBleDevice> scan() => _client
       .scanForDevices(
         withServices: [BridgepadBleUuids.service],
         scanMode: ScanMode.lowLatency,
@@ -59,7 +152,8 @@ class BridgepadBleTransport implements BridgepadTransport {
   Future<void> connect(String deviceId) async {
     await disconnect();
     final connected = Completer<void>();
-    _connection = _ble
+    var preparingConnection = false;
+    _connection = _client
         .connectToDevice(
           id: deviceId,
           servicesWithCharacteristicsToDiscover: {
@@ -72,25 +166,24 @@ class BridgepadBleTransport implements BridgepadTransport {
           connectionTimeout: const Duration(seconds: 12),
         )
         .listen(
-          (update) async {
+          (update) {
             switch (update.connectionState) {
               case DeviceConnectionState.connected:
-                _rx = QualifiedCharacteristic(
-                  serviceId: BridgepadBleUuids.service,
-                  characteristicId: BridgepadBleUuids.rx,
-                  deviceId: deviceId,
+                if (preparingConnection) return;
+                preparingConnection = true;
+                unawaited(
+                  _prepareConnectedLink(deviceId)
+                      .then((_) {
+                        _connections.add(true);
+                        if (!connected.isCompleted) connected.complete();
+                      })
+                      .catchError((Object error) {
+                        _rx = null;
+                        if (!connected.isCompleted) {
+                          connected.completeError(error);
+                        }
+                      }),
                 );
-                final tx = QualifiedCharacteristic(
-                  serviceId: BridgepadBleUuids.service,
-                  characteristicId: BridgepadBleUuids.tx,
-                  deviceId: deviceId,
-                );
-                _notifications = _ble.subscribeToCharacteristic(tx).listen(
-                  (value) => _messages.add(Uint8List.fromList(value)),
-                  onError: _messages.addError,
-                );
-                _connections.add(true);
-                if (!connected.isCompleted) connected.complete();
               case DeviceConnectionState.disconnected:
                 _rx = null;
                 _connections.add(false);
@@ -112,17 +205,48 @@ class BridgepadBleTransport implements BridgepadTransport {
     await connected.future;
   }
 
+  Future<void> _prepareConnectedLink(String deviceId) async {
+    if (_negotiateMtu) {
+      final mtu = await _client.requestMtu(
+        deviceId: deviceId,
+        mtu: preferredMtu,
+      );
+      if (mtu < minimumMtu) {
+        throw StateError(
+          'BridgePad needs BLE MTU $minimumMtu or larger; Android negotiated $mtu',
+        );
+      }
+    }
+    _rx = QualifiedCharacteristic(
+      serviceId: BridgepadBleUuids.service,
+      characteristicId: BridgepadBleUuids.rx,
+      deviceId: deviceId,
+    );
+    final tx = QualifiedCharacteristic(
+      serviceId: BridgepadBleUuids.service,
+      characteristicId: BridgepadBleUuids.tx,
+      deviceId: deviceId,
+    );
+    _notifications = _client
+        .subscribeToCharacteristic(tx)
+        .listen(
+          (value) => _messages.add(Uint8List.fromList(value)),
+          onError: _messages.addError,
+        );
+    await Future<void>.delayed(notificationSettleDelay);
+  }
+
   @override
   Future<void> write(Uint8List value, {bool withResponse = true}) async {
     final characteristic = _rx;
     if (characteristic == null) throw StateError('BridgePad is not connected');
     if (withResponse) {
-      await _ble.writeCharacteristicWithResponse(
+      await _client.writeCharacteristicWithResponse(
         characteristic,
         value: value,
       );
     } else {
-      await _ble.writeCharacteristicWithoutResponse(
+      await _client.writeCharacteristicWithoutResponse(
         characteristic,
         value: value,
       );
