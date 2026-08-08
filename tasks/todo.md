@@ -6,4 +6,4 @@
 - [x] Run host tests and build the FAP.
 - [x] Install and smoke-test on Momentum mntm-012.
 - [x] Update documentation and changelog.
-- [ ] Review, commit, push, and refresh prerelease assets.
+- [x] Review, commit, push, and refresh prerelease assets.
