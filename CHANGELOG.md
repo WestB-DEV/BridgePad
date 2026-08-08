@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 - 2026-08-08
+
+### Fixed
+
+- BridgePad now remains open when qFlipper, RPC, USB, or Bluetooth temporarily blocks hardware startup.
+- The Flipper displays the unavailable subsystem and lets OK retry it instead of returning to the application folder.
+- Partial Bluetooth startup is unwound before retry, preventing stale callbacks and profiles.
+
 ## 0.1.0 - 2026-08-04
 
 - Initial stock-firmware Flipper BLE-to-USB HID bridge.
