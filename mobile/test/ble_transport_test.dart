@@ -8,23 +8,27 @@ class FakeBleClient implements BridgepadBleClient {
   final operations = <String>[];
   final notifications = StreamController<List<int>>.broadcast();
   int negotiatedMtu = BridgepadBleTransport.preferredMtu;
+  Completer<int>? pendingMtu;
+  StreamController<ConnectionStateUpdate>? connectionUpdates;
 
   @override
   Stream<ConnectionStateUpdate> connectToDevice({
     required String id,
     required Map<Uuid, List<Uuid>> servicesWithCharacteristicsToDiscover,
     required Duration connectionTimeout,
-  }) => Stream.value(
-    ConnectionStateUpdate(
-      deviceId: id,
-      connectionState: DeviceConnectionState.connected,
-      failure: null,
-    ),
-  );
+  }) => connectionUpdates?.stream ??
+      Stream.value(
+        ConnectionStateUpdate(
+          deviceId: id,
+          connectionState: DeviceConnectionState.connected,
+          failure: null,
+        ),
+      );
 
   @override
   Future<int> requestMtu({required String deviceId, required int mtu}) async {
     operations.add('mtu');
+    if (pendingMtu case final pending?) return pending.future;
     return negotiatedMtu;
   }
 
@@ -55,7 +59,10 @@ class FakeBleClient implements BridgepadBleClient {
     required List<int> value,
   }) async {}
 
-  Future<void> close() => notifications.close();
+  Future<void> close() async {
+    await connectionUpdates?.close();
+    await notifications.close();
+  }
 }
 
 void main() {
@@ -100,4 +107,58 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('disconnect during MTU setup cannot report a stale connected state', () async {
+    client.pendingMtu = Completer<int>();
+    final connectionStates = <bool>[];
+    final subscription = transport.connectionChanges.listen(
+      connectionStates.add,
+    );
+
+    final connecting = transport.connect('device-1');
+    final connectionResult = expectLater(connecting, throwsA(isA<StateError>()));
+    await Future<void>.delayed(Duration.zero);
+    await transport.disconnect();
+    client.pendingMtu!.complete(BridgepadBleTransport.preferredMtu);
+
+    await connectionResult;
+    expect(connectionStates, isNot(contains(true)));
+    await subscription.cancel();
+  }, timeout: const Timeout(Duration(seconds: 2)));
+
+  test('remote disconnect invalidates MTU setup still in flight', () async {
+    client.pendingMtu = Completer<int>();
+    client.connectionUpdates = StreamController<ConnectionStateUpdate>.broadcast(
+      sync: true,
+    );
+    final connectionStates = <bool>[];
+    final subscription = transport.connectionChanges.listen(
+      connectionStates.add,
+    );
+
+    final connecting = transport.connect('device-1');
+    final connectionResult = expectLater(connecting, throwsA(isA<Exception>()));
+    await Future<void>.delayed(Duration.zero);
+    client.connectionUpdates!.add(
+      const ConnectionStateUpdate(
+        deviceId: 'device-1',
+        connectionState: DeviceConnectionState.connected,
+        failure: null,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    client.connectionUpdates!.add(
+      const ConnectionStateUpdate(
+        deviceId: 'device-1',
+        connectionState: DeviceConnectionState.disconnected,
+        failure: null,
+      ),
+    );
+    client.pendingMtu!.complete(BridgepadBleTransport.preferredMtu);
+
+    await connectionResult;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(connectionStates, [false]);
+    await subscription.cancel();
+  }, timeout: const Timeout(Duration(seconds: 2)));
 }

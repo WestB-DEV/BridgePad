@@ -13,6 +13,7 @@ class FakeTransport implements BridgepadTransport {
   bool autoAck = true;
   int helloResponsesToDrop = 0;
   int disconnectCalls = 0;
+  BridgepadStatus? helloRejection;
 
   @override
   Stream<bool> get connectionChanges => _connections.stream;
@@ -38,6 +39,12 @@ class FakeTransport implements BridgepadTransport {
     if (frame.opcode == BridgepadOpcode.hello) {
       if (helloResponsesToDrop > 0) {
         helloResponsesToDrop--;
+        return;
+      }
+      if (helloRejection case final rejection?) {
+        Timer.run(
+          () => emitResult(BridgepadOpcode.error, frame.sequence, rejection),
+        );
         return;
       }
       emitStatus(ble: true, usb: true, armed: true, sequence: frame.sequence);
@@ -150,6 +157,20 @@ void main() {
 
     expect(transport.disconnectCalls, 1);
     expect(controller.connectionState, BridgepadConnectionState.disconnected);
+  });
+
+  test('HELLO retries timeouts but not explicit device rejections', () async {
+    transport.helloRejection = BridgepadStatus.unsupported;
+
+    await expectLater(
+      controller.connect('device-1'),
+      throwsA(isA<DeviceRejectedException>()),
+    );
+
+    expect(
+      transport.writes.where((frame) => frame.opcode == BridgepadOpcode.hello),
+      hasLength(1),
+    );
   });
 
   test('text is sent sequentially in acknowledged protocol chunks', () async {

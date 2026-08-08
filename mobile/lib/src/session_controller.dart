@@ -202,7 +202,7 @@ class BridgepadSessionController extends ChangeNotifier {
       try {
         await _sendReliable(BridgepadOpcode.hello);
         return;
-      } catch (_) {
+      } on TimeoutException {
         if (attempt + 1 >= helloAttempts) rethrow;
       }
     }

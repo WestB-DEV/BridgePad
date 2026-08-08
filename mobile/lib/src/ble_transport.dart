@@ -126,7 +126,9 @@ class BridgepadBleTransport implements BridgepadTransport {
   final _connections = StreamController<bool>.broadcast();
   StreamSubscription<ConnectionStateUpdate>? _connection;
   StreamSubscription<List<int>>? _notifications;
+  Completer<void>? _connecting;
   QualifiedCharacteristic? _rx;
+  int _connectionGeneration = 0;
 
   @override
   Stream<Uint8List> get messages => _messages.stream;
@@ -151,7 +153,9 @@ class BridgepadBleTransport implements BridgepadTransport {
   @override
   Future<void> connect(String deviceId) async {
     await disconnect();
+    final generation = _connectionGeneration;
     final connected = Completer<void>();
+    _connecting = connected;
     var preparingConnection = false;
     _connection = _client
         .connectToDevice(
@@ -167,24 +171,27 @@ class BridgepadBleTransport implements BridgepadTransport {
         )
         .listen(
           (update) {
+            if (generation != _connectionGeneration) return;
             switch (update.connectionState) {
               case DeviceConnectionState.connected:
                 if (preparingConnection) return;
                 preparingConnection = true;
                 unawaited(
-                  _prepareConnectedLink(deviceId)
+                  _prepareConnectedLink(deviceId, generation)
                       .then((_) {
+                        if (generation != _connectionGeneration) return;
                         _connections.add(true);
                         if (!connected.isCompleted) connected.complete();
                       })
                       .catchError((Object error) {
-                        _rx = null;
+                        if (generation == _connectionGeneration) _rx = null;
                         if (!connected.isCompleted) {
                           connected.completeError(error);
                         }
                       }),
                 );
               case DeviceConnectionState.disconnected:
+                _connectionGeneration++;
                 _rx = null;
                 _connections.add(false);
                 if (!connected.isCompleted) {
@@ -198,14 +205,19 @@ class BridgepadBleTransport implements BridgepadTransport {
             }
           },
           onError: (Object error) {
+            if (generation != _connectionGeneration) return;
             _connections.addError(error);
             if (!connected.isCompleted) connected.completeError(error);
           },
         );
-    await connected.future;
+    try {
+      await connected.future;
+    } finally {
+      if (identical(_connecting, connected)) _connecting = null;
+    }
   }
 
-  Future<void> _prepareConnectedLink(String deviceId) async {
+  Future<void> _prepareConnectedLink(String deviceId, int generation) async {
     if (_negotiateMtu) {
       final mtu = await _client.requestMtu(
         deviceId: deviceId,
@@ -217,6 +229,7 @@ class BridgepadBleTransport implements BridgepadTransport {
         );
       }
     }
+    _requireCurrentConnection(generation);
     _rx = QualifiedCharacteristic(
       serviceId: BridgepadBleUuids.service,
       characteristicId: BridgepadBleUuids.rx,
@@ -234,6 +247,13 @@ class BridgepadBleTransport implements BridgepadTransport {
           onError: _messages.addError,
         );
     await Future<void>.delayed(notificationSettleDelay);
+    _requireCurrentConnection(generation);
+  }
+
+  void _requireCurrentConnection(int generation) {
+    if (generation != _connectionGeneration) {
+      throw StateError('BridgePad BLE connection was cancelled');
+    }
   }
 
   @override
@@ -255,6 +275,14 @@ class BridgepadBleTransport implements BridgepadTransport {
 
   @override
   Future<void> disconnect() async {
+    _connectionGeneration++;
+    final connecting = _connecting;
+    _connecting = null;
+    if (connecting != null && !connecting.isCompleted) {
+      connecting.completeError(
+        StateError('BridgePad BLE connection was cancelled'),
+      );
+    }
     _rx = null;
     await _notifications?.cancel();
     _notifications = null;
