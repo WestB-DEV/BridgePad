@@ -26,11 +26,13 @@ class BridgepadSessionController extends ChangeNotifier {
     this._transport, {
     this.heartbeatInterval = const Duration(seconds: 2),
     this.commandTimeout = const Duration(seconds: 3),
-  });
+    this.helloAttempts = 2,
+  }) : assert(helloAttempts > 0);
 
   final BridgepadTransport _transport;
   final Duration heartbeatInterval;
   final Duration commandTimeout;
+  final int helloAttempts;
   final Map<int, _PendingCommand> _pending = {};
   StreamSubscription<Uint8List>? _messageSubscription;
   StreamSubscription<bool>? _connectionSubscription;
@@ -65,7 +67,7 @@ class BridgepadSessionController extends ChangeNotifier {
       await _transport.connect(deviceId);
       connectionState = BridgepadConnectionState.negotiating;
       notifyListeners();
-      await _sendReliable(BridgepadOpcode.hello);
+      await _negotiateHello();
       if (deviceStatus.protocolVersion != BridgepadProtocol.version) {
         throw ProtocolException(
           'Device uses protocol ${deviceStatus.protocolVersion}; this app uses v1',
@@ -187,6 +189,17 @@ class BridgepadSessionController extends ChangeNotifier {
       final pending = _pending.remove(sequence);
       pending?.timer.cancel();
       rethrow;
+    }
+  }
+
+  Future<void> _negotiateHello() async {
+    for (var attempt = 0; attempt < helloAttempts; attempt++) {
+      try {
+        await _sendReliable(BridgepadOpcode.hello);
+        return;
+      } catch (_) {
+        if (attempt + 1 >= helloAttempts) rethrow;
+      }
     }
   }
 

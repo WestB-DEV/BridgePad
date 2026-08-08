@@ -11,6 +11,7 @@ class FakeTransport implements BridgepadTransport {
   final _connections = StreamController<bool>.broadcast(sync: true);
   final writes = <BridgepadFrame>[];
   bool autoAck = true;
+  int helloResponsesToDrop = 0;
 
   @override
   Stream<bool> get connectionChanges => _connections.stream;
@@ -33,6 +34,10 @@ class FakeTransport implements BridgepadTransport {
     final frame = BridgepadProtocol.decode(value);
     writes.add(frame);
     if (frame.opcode == BridgepadOpcode.hello) {
+      if (helloResponsesToDrop > 0) {
+        helloResponsesToDrop--;
+        return;
+      }
       emitStatus(ble: true, usb: true, armed: true, sequence: frame.sequence);
     }
     if (autoAck) emitResult(BridgepadOpcode.ack, frame.sequence, BridgepadStatus.ok);
@@ -105,6 +110,25 @@ void main() {
     expect(controller.connectionState, BridgepadConnectionState.ready);
     expect(controller.deviceStatus.isUsbConnected, isTrue);
     expect(controller.deviceStatus.isArmed, isTrue);
+  });
+
+  test('HELLO retries when the first notification response is lost', () async {
+    controller.dispose();
+    transport.helloResponsesToDrop = 1;
+    controller = BridgepadSessionController(
+      transport,
+      heartbeatInterval: const Duration(days: 1),
+      commandTimeout: const Duration(milliseconds: 5),
+      helloAttempts: 2,
+    );
+
+    await controller.connect('device-1');
+
+    expect(
+      transport.writes.where((frame) => frame.opcode == BridgepadOpcode.hello),
+      hasLength(2),
+    );
+    expect(controller.connectionState, BridgepadConnectionState.ready);
   });
 
   test('text is sent sequentially in acknowledged protocol chunks', () async {
