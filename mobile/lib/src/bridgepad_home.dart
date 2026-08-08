@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import 'android_ble_platform.dart';
 import 'ble_transport.dart';
 import 'demo_transport.dart';
 import 'session_controller.dart';
+import 'trackpad.dart';
 
 class BridgepadHome extends StatefulWidget {
   const BridgepadHome({
@@ -197,7 +197,7 @@ class _BridgepadHomeState extends State<BridgepadHome>
                 onConnect: _connect,
                 onDemo: _startDemo,
               )
-            : _RemotePanel(session: session),
+            : BridgepadRemotePanel(session: session),
       ),
     );
   }
@@ -287,15 +287,15 @@ class _ConnectionPanel extends StatelessWidget {
   }
 }
 
-class _RemotePanel extends StatefulWidget {
-  const _RemotePanel({required this.session});
+class BridgepadRemotePanel extends StatefulWidget {
+  const BridgepadRemotePanel({super.key, required this.session});
   final BridgepadSessionController session;
 
   @override
-  State<_RemotePanel> createState() => _RemotePanelState();
+  State<BridgepadRemotePanel> createState() => _RemotePanelState();
 }
 
-class _RemotePanelState extends State<_RemotePanel> {
+class _RemotePanelState extends State<BridgepadRemotePanel> {
   final _compose = TextEditingController();
   final _live = TextEditingController();
   final _focus = FocusNode();
@@ -335,6 +335,23 @@ class _RemotePanelState extends State<_RemotePanel> {
     if (text != null) _compose.text = text;
   });
 
+  void _sendLiveInput(String value) {
+    if (value.isEmpty) return;
+    _live.clear();
+    _guard(() async {
+      final normalized = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      final segments = normalized.split('\n');
+      for (var index = 0; index < segments.length; index++) {
+        if (segments[index].isNotEmpty) {
+          await widget.session.sendText(segments[index]);
+        }
+        if (index + 1 < segments.length) {
+          await widget.session.sendKey(0x28);
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
@@ -355,24 +372,30 @@ class _RemotePanelState extends State<_RemotePanel> {
             child: const Text('Press OK on the Flipper to arm this session.'),
           ),
         const SizedBox(height: 12),
-        _Trackpad(session: session, guard: _guard),
+        BridgepadTrackpad(
+          enabled: session.canSend,
+          guard: _guard,
+          onMove: session.pointerMove,
+          onScroll: session.scroll,
+          onButton: session.pointerButton,
+        ),
         const SizedBox(height: 12),
         TextField(
+          key: const Key('live-typing'),
           controller: _live,
           focusNode: _focus,
           enabled: session.canSend,
           autocorrect: false,
           enableSuggestions: false,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          maxLines: 1,
           decoration: const InputDecoration(
             labelText: 'Live typing',
-            hintText: 'Tap here, then type…',
+            hintText: 'Type here • keyboard Enter sends Enter',
             prefixIcon: Icon(Icons.keyboard),
           ),
-          onChanged: (value) {
-            if (value.isEmpty) return;
-            _live.clear();
-            _guard(() => session.sendText(value));
-          },
+          onChanged: _sendLiveInput,
         ),
         const SizedBox(height: 12),
         TextField(
@@ -474,127 +497,6 @@ class _Status extends StatelessWidget {
             color: color,
             fontWeight: FontWeight.w700,
             fontSize: 12,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Trackpad extends StatefulWidget {
-  const _Trackpad({required this.session, required this.guard});
-  final BridgepadSessionController session;
-  final Future<void> Function(Future<void> Function()) guard;
-
-  @override
-  State<_Trackpad> createState() => _TrackpadState();
-}
-
-class _TrackpadState extends State<_Trackpad> {
-  int _pointers = 0;
-  DateTime _lastMove = DateTime.fromMillisecondsSinceEpoch(0);
-  Offset _lastLongPressOffset = Offset.zero;
-
-  void _move(DragUpdateDetails details) {
-    final now = DateTime.now();
-    if (now.difference(_lastMove) < const Duration(milliseconds: 33)) return;
-    _lastMove = now;
-    if (_pointers >= 2) {
-      final amount = (-details.delta.dy / 2).round();
-      if (amount != 0) {
-        widget.guard(() => widget.session.scroll(amount.clamp(-127, 127)));
-      }
-    } else {
-      final dx = details.delta.dx.round().clamp(-127, 127);
-      final dy = details.delta.dy.round().clamp(-127, 127);
-      if (dx != 0 || dy != 0) {
-        widget.guard(() => widget.session.pointerMove(dx, dy));
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label:
-          'Mouse trackpad. Tap for left click, long press and move to drag, two fingers to scroll.',
-      child: Listener(
-        onPointerDown: (_) => setState(() => _pointers++),
-        onPointerUp: (_) =>
-            setState(() => _pointers = math.max(0, _pointers - 1)),
-        onPointerCancel: (_) =>
-            setState(() => _pointers = math.max(0, _pointers - 1)),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanUpdate: widget.session.canSend ? _move : null,
-          onTap: widget.session.canSend
-              ? () => widget.guard(() async {
-                  await widget.session.pointerButton(1, true);
-                  await widget.session.pointerButton(1, false);
-                })
-              : null,
-          onLongPressStart: widget.session.canSend
-              ? (_) {
-                  _lastLongPressOffset = Offset.zero;
-                  widget.guard(() => widget.session.pointerButton(1, true));
-                }
-              : null,
-          onLongPressMoveUpdate: widget.session.canSend
-              ? (details) {
-                  final delta = details.offsetFromOrigin - _lastLongPressOffset;
-                  _lastLongPressOffset = details.offsetFromOrigin;
-                  _move(
-                    DragUpdateDetails(
-                      globalPosition: details.globalPosition,
-                      delta: delta,
-                    ),
-                  );
-                }
-              : null,
-          onLongPressEnd: widget.session.canSend
-              ? (_) =>
-                    widget.guard(() => widget.session.pointerButton(1, false))
-              : null,
-          child: Container(
-            height: 190,
-            decoration: BoxDecoration(
-              color: const Color(0xff20262b),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-            ),
-            child: Stack(
-              children: [
-                const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.touch_app_outlined, size: 36),
-                      SizedBox(height: 8),
-                      Text('TRACKPAD', style: TextStyle(letterSpacing: 2)),
-                      Text(
-                        'tap • drag • two-finger scroll',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: TextButton(
-                    onPressed: widget.session.canSend
-                        ? () => widget.guard(() async {
-                            await widget.session.pointerButton(2, true);
-                            await widget.session.pointerButton(2, false);
-                          })
-                        : null,
-                    child: const Text('RIGHT CLICK'),
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
