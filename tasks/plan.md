@@ -31,8 +31,8 @@ Android could report GATT connected before the notification channel was ready, t
 
 - [x] Pass Flutter unit/widget tests and static analysis.
 - [x] Compile the Android native bridge and debug APK.
-- [ ] Run firmware host tests and validate the existing 0.1.1 FAP against API 87.1.
-- [ ] Publish APK 0.1.2 test build with the compatible FAP and checksums.
+- [x] Run firmware host tests and validate the existing 0.1.1 FAP against API 87.1.
+- [x] Publish APK 0.1.2 test build with the compatible FAP and checksums.
 
 ## Risks and Mitigations
 
