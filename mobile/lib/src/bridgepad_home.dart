@@ -14,10 +14,12 @@ class BridgepadHome extends StatefulWidget {
     super.key,
     this.bleTransport,
     this.androidPlatform = const AndroidBlePlatform(),
+    this.scanTimeout = const Duration(seconds: 10),
   });
 
   final BridgepadBleTransport? bleTransport;
   final AndroidBlePlatform androidPlatform;
+  final Duration scanTimeout;
 
   @override
   State<BridgepadHome> createState() => _BridgepadHomeState();
@@ -25,11 +27,17 @@ class BridgepadHome extends StatefulWidget {
 
 class _BridgepadHomeState extends State<BridgepadHome>
     with WidgetsBindingObserver {
+  static const _noDeviceGuidance =
+      'No BridgePad found. Keep BridgePad open on the Flipper and try again. '
+      'On Android 11 or older, allow Location and turn the phone\'s Location '
+      'switch on. BridgePad does not collect or store your location.';
+
   late final BridgepadBleTransport _bleTransport;
   late final AndroidBlePlatform _android;
   BridgepadSessionController? _session;
   StreamSubscription<BridgepadBleDevice>? _scan;
   final _devices = <String, BridgepadBleDevice>{};
+  int _scanGeneration = 0;
   bool _scanning = false;
   String? _pageError;
 
@@ -50,6 +58,7 @@ class _BridgepadHomeState extends State<BridgepadHome>
   }
 
   Future<void> _startScan() async {
+    final generation = ++_scanGeneration;
     setState(() {
       _pageError = null;
       _devices.clear();
@@ -57,25 +66,36 @@ class _BridgepadHomeState extends State<BridgepadHome>
     });
     try {
       await _android.requestPermissions();
+      if (!mounted || generation != _scanGeneration) return;
       await _scan?.cancel();
+      _scan = null;
+      if (!mounted || generation != _scanGeneration) return;
+      var scanFailed = false;
       _scan = _bleTransport.scan().listen(
         (device) {
-          if (!mounted) return;
+          if (!mounted || generation != _scanGeneration) return;
           setState(() => _devices[device.id] = device);
         },
         onError: (Object error) {
-          if (!mounted) return;
+          scanFailed = true;
+          if (!mounted || generation != _scanGeneration) return;
           setState(() {
             _pageError = _friendly(error);
             _scanning = false;
           });
         },
       );
-      Future<void>.delayed(const Duration(seconds: 10), () {
-        if (mounted) setState(() => _scanning = false);
-        _scan?.cancel();
+      await Future<void>.delayed(widget.scanTimeout);
+      if (!mounted || generation != _scanGeneration || scanFailed) return;
+      final completedScan = _scan;
+      _scan = null;
+      if (completedScan != null) unawaited(completedScan.cancel());
+      setState(() {
+        _scanning = false;
+        if (_devices.isEmpty) _pageError = _noDeviceGuidance;
       });
     } catch (error) {
+      if (!mounted || generation != _scanGeneration) return;
       setState(() {
         _pageError = _friendly(error);
         _scanning = false;
@@ -84,7 +104,9 @@ class _BridgepadHomeState extends State<BridgepadHome>
   }
 
   Future<void> _connect(BridgepadBleDevice device) async {
+    _scanGeneration++;
     await _scan?.cancel();
+    _scan = null;
     setState(() {
       _scanning = false;
       _pageError = null;
@@ -134,6 +156,7 @@ class _BridgepadHomeState extends State<BridgepadHome>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _scanGeneration++;
     _scan?.cancel();
     _session?.dispose();
     unawaited(_bleTransport.dispose());

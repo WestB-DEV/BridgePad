@@ -79,6 +79,15 @@ class TooSmallMtuBleClient implements BridgepadBleClient {
   }) async {}
 }
 
+class EmptyScanBleClient extends TooSmallMtuBleClient {
+  @override
+  Stream<DiscoveredDevice> scanForDevices({
+    required List<Uuid> withServices,
+    required ScanMode scanMode,
+    required bool requireLocationServicesEnabled,
+  }) => const Stream.empty();
+}
+
 void main() {
   testWidgets('hardware-free demo opens the armed remote controls', (
     tester,
@@ -145,5 +154,34 @@ void main() {
     );
     expect(error.data, contains('needs BLE MTU'));
     expect(find.byIcon(Icons.link_off), findsNothing);
+  });
+
+  testWidgets('empty scan explains older Android Location requirements', (
+    tester,
+  ) async {
+    final transport = BridgepadBleTransport(
+      client: EmptyScanBleClient(),
+      negotiateMtu: false,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BridgepadHome(
+          bleTransport: transport,
+          androidPlatform: SuccessfulAndroidPlatform(),
+          scanTimeout: Duration.zero,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Find BridgePad'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+
+    expect(find.textContaining('No BridgePad found'), findsOneWidget);
+    expect(find.textContaining('Keep BridgePad open'), findsOneWidget);
+    expect(find.textContaining('Android 11 or older'), findsOneWidget);
+    expect(find.textContaining('Location switch'), findsOneWidget);
+    expect(find.textContaining('does not collect or store'), findsOneWidget);
   });
 }
