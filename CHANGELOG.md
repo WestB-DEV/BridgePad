@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.4-test.1 - 2026-08-08
+
+### Fixed
+
+- Flipper BLE responses are now serialized through a bounded queue and advanced only after the serial service confirms `DataSent`, preventing the `HELLO` acknowledgement from being dropped behind its status response.
+
+### Changed
+
+- APK, FAP, and checksum deliverables now include the complete test version in their filenames.
+- Android and Flipper application metadata now share the `0.1.4` base version.
+
 ## 0.1.3 - 2026-08-08
 
 ### Fixed

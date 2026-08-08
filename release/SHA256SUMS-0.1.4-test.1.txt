@@ -1,0 +1,2 @@
+2f4cc59ad3b1d5256b54692ec540cd0493ec95a5116f5cb0b42b365e824556dd  bridgepad-0.1.4-test.1.fap
+de2cc0afd7af07765ca96f9b7333d57da35ae1fe44ec1a839130ae08bc3ccd15  bridgepad-0.1.4-test.1-android-debug.apk

@@ -4,8 +4,10 @@ BridgePad turns a Flipper Zero into an explicitly armed Bluetooth-to-USB keyboar
 
 ## Install the test build
 
-1. Copy `release/bridgepad.fap` to `apps/USB/` on the Flipper SD card with qFlipper.
-2. On Android, enable installation from your file manager and install `release/bridgepad-debug.apk`. Android will warn that this is a developer-signed sideloaded build.
+The current test release is `0.1.4-test.1`. Its version is included in every deliverable filename so APK and FAP builds cannot be confused.
+
+1. Copy `release/bridgepad-0.1.4-test.1.fap` to `apps/USB/` on the Flipper SD card with qFlipper.
+2. On Android, enable installation from your file manager and install `release/bridgepad-0.1.4-test.1-android-debug.apk`. Android will warn that this is a developer-signed sideloaded build.
 3. Connect the Flipper USB-C data cable to the target Mac, PC, or other USB host.
 4. Run **Apps → USB → BridgePad** on the Flipper. It temporarily takes over Bluetooth and USB, then restores both when it exits.
 5. Open BridgePad on Android, tap **Find BridgePad**, select the Flipper, and accept Android's pairing prompt.
@@ -34,7 +36,10 @@ Prerequisites are Flutter stable, Android SDK 36, JDK 17, `ufbt`, and the offici
 make test
 cd firmware && ufbt
 cd ../mobile && flutter test && flutter analyze && flutter build apk --debug
+cd .. && scripts/package_test_release.sh
 ```
+
+`VERSION` is the release-filename source of truth. The packaging script verifies that the Android and FAP base versions match it before creating versioned artifacts and a versioned checksum file.
 
 The mobile dependency is pinned by `pubspec.lock`. `flutter_reactive_ble` 5.5.0 declares Android compile SDK 33 while its resolved AndroidX dependencies require 34+, so the root Android Gradle script applies a narrowly scoped compile-SDK 36 compatibility override. Minimum Android remains API 26 (Android 8).
 
