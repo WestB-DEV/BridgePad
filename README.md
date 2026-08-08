@@ -46,3 +46,7 @@ The mobile dependency is pinned by `pubspec.lock`. `flutter_reactive_ble` 5.5.0 
 - `release/`: locally built, ignored test artifacts and checksums.
 
 BridgePad is an independent project and is not affiliated with or endorsed by Flipper Devices Inc.
+
+## Future roadmap and market research
+
+The proposed macOS/Windows controller apps, low-cost standalone bridge path, competitor scan, and hardware candidates are documented in [Future Roadmap and Market Scan](docs/FUTURE_ROADMAP_AND_MARKET_SCAN.md).
