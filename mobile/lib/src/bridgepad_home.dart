@@ -10,7 +10,14 @@ import 'demo_transport.dart';
 import 'session_controller.dart';
 
 class BridgepadHome extends StatefulWidget {
-  const BridgepadHome({super.key});
+  const BridgepadHome({
+    super.key,
+    this.bleTransport,
+    this.androidPlatform = const AndroidBlePlatform(),
+  });
+
+  final BridgepadBleTransport? bleTransport;
+  final AndroidBlePlatform androidPlatform;
 
   @override
   State<BridgepadHome> createState() => _BridgepadHomeState();
@@ -18,8 +25,8 @@ class BridgepadHome extends StatefulWidget {
 
 class _BridgepadHomeState extends State<BridgepadHome>
     with WidgetsBindingObserver {
-  final _bleTransport = BridgepadBleTransport();
-  final _android = const AndroidBlePlatform();
+  late final BridgepadBleTransport _bleTransport;
+  late final AndroidBlePlatform _android;
   BridgepadSessionController? _session;
   StreamSubscription<BridgepadBleDevice>? _scan;
   final _devices = <String, BridgepadBleDevice>{};
@@ -29,6 +36,8 @@ class _BridgepadHomeState extends State<BridgepadHome>
   @override
   void initState() {
     super.initState();
+    _bleTransport = widget.bleTransport ?? BridgepadBleTransport();
+    _android = widget.androidPlatform;
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -80,14 +89,22 @@ class _BridgepadHomeState extends State<BridgepadHome>
       _scanning = false;
       _pageError = null;
     });
+    BridgepadSessionController? connectingSession;
     try {
       await _android.bond(device.id);
       final session = BridgepadSessionController(_bleTransport);
+      connectingSession = session;
       session.addListener(_sessionChanged);
       setState(() => _session = session);
       await session.connect(device.id);
     } catch (error) {
-      setState(() => _pageError = _friendly(error));
+      connectingSession?.removeListener(_sessionChanged);
+      connectingSession?.dispose();
+      if (!mounted) return;
+      setState(() {
+        if (identical(_session, connectingSession)) _session = null;
+        _pageError = _friendly(error);
+      });
     }
   }
 
@@ -215,7 +232,11 @@ class _ConnectionPanel extends StatelessWidget {
         ),
         if (error != null) ...[
           const SizedBox(height: 12),
-          Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Text(
+            error!,
+            key: const Key('connection-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         ],
         const SizedBox(height: 12),
         for (final device in devices)
@@ -229,7 +250,10 @@ class _ConnectionPanel extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 24),
-        TextButton(onPressed: onDemo, child: const Text('Open hardware-free demo')),
+        TextButton(
+          onPressed: onDemo,
+          child: const Text('Open hardware-free demo'),
+        ),
         const Text(
           'Offline by design • no accounts • no clipboard history',
           textAlign: TextAlign.center,
@@ -268,7 +292,9 @@ class _RemotePanelState extends State<_RemotePanel> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
       );
     }
   }
@@ -298,7 +324,9 @@ class _RemotePanelState extends State<_RemotePanel> {
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.secondary.withValues(alpha: .12),
+              color: Theme.of(
+                context,
+              ).colorScheme.secondary.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Text('Press OK on the Flipper to arm this session.'),
@@ -419,7 +447,11 @@ class _Status extends StatelessWidget {
         child: Text(
           '●  $label',
           textAlign: TextAlign.center,
-          style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
         ),
       ),
     );
@@ -446,7 +478,9 @@ class _TrackpadState extends State<_Trackpad> {
     _lastMove = now;
     if (_pointers >= 2) {
       final amount = (-details.delta.dy / 2).round();
-      if (amount != 0) widget.guard(() => widget.session.scroll(amount.clamp(-127, 127)));
+      if (amount != 0) {
+        widget.guard(() => widget.session.scroll(amount.clamp(-127, 127)));
+      }
     } else {
       final dx = details.delta.dx.round().clamp(-127, 127);
       final dy = details.delta.dy.round().clamp(-127, 127);
@@ -459,11 +493,14 @@ class _TrackpadState extends State<_Trackpad> {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Mouse trackpad. Tap for left click, long press and move to drag, two fingers to scroll.',
+      label:
+          'Mouse trackpad. Tap for left click, long press and move to drag, two fingers to scroll.',
       child: Listener(
         onPointerDown: (_) => setState(() => _pointers++),
-        onPointerUp: (_) => setState(() => _pointers = math.max(0, _pointers - 1)),
-        onPointerCancel: (_) => setState(() => _pointers = math.max(0, _pointers - 1)),
+        onPointerUp: (_) =>
+            setState(() => _pointers = math.max(0, _pointers - 1)),
+        onPointerCancel: (_) =>
+            setState(() => _pointers = math.max(0, _pointers - 1)),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanUpdate: widget.session.canSend ? _move : null,
@@ -492,14 +529,17 @@ class _TrackpadState extends State<_Trackpad> {
                 }
               : null,
           onLongPressEnd: widget.session.canSend
-              ? (_) => widget.guard(() => widget.session.pointerButton(1, false))
+              ? (_) =>
+                    widget.guard(() => widget.session.pointerButton(1, false))
               : null,
           child: Container(
             height: 190,
             decoration: BoxDecoration(
               color: const Color(0xff20262b),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
             child: Stack(
               children: [
@@ -510,7 +550,10 @@ class _TrackpadState extends State<_Trackpad> {
                       Icon(Icons.touch_app_outlined, size: 36),
                       SizedBox(height: 8),
                       Text('TRACKPAD', style: TextStyle(letterSpacing: 2)),
-                      Text('tap • drag • two-finger scroll', style: TextStyle(fontSize: 12)),
+                      Text(
+                        'tap • drag • two-finger scroll',
+                        style: TextStyle(fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
