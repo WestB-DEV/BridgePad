@@ -10,10 +10,10 @@
 
 ## Phase 1: Discovery Correction
 
-- [ ] Add failing advertisement-contract tests.
-- [ ] Scan for advertised UUIDs `0x3080`–`0x3083`.
-- [ ] Add clear no-result and Android location-permission guidance.
-- [ ] Pass focused tests, full mobile tests, analysis, and APK build.
+- [x] Add failing advertisement-contract tests.
+- [x] Scan for advertised UUIDs `0x3080`–`0x3083`.
+- [x] Add clear no-result and Android location-permission guidance.
+- [x] Pass focused tests, full mobile tests, analysis, and APK build.
 
 ## Checkpoint A: Hardware Discovery
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 - 2026-08-08
+
+### Fixed
+
+- Android discovery now scans for the four Flipper serial-profile advertisement IDs used by official and Momentum firmware instead of filtering for a GATT service that appears only after connection.
+- Empty scans now explain the Flipper app prerequisite and the Location permission and system switch required for BLE discovery on Android 11 or older without collecting or storing location data.
+
 ## 0.1.2 - 2026-08-08
 
 ### Fixed

@@ -15,7 +15,9 @@ Press **Back** on the Flipper or **RELEASE ALL + DISARM** on the phone to stop i
 
 The Flipper can use Bluetooth and USB HID at the same time; that simultaneous connection is BridgePad's normal operating mode. Close qFlipper before launching BridgePad because qFlipper may keep the USB control interface busy.
 
-If Android pairing fails, leave BridgePad open on the Flipper, keep it near the phone, and retry from the app. A failed attempt now times out after 30 seconds and returns to the scan screen instead of leaving a stale connection behind.
+If Android does not find the Flipper, leave BridgePad open on the Flipper and keep it near the phone. On Android 11 or older—including the RED Hydrogen One—allow the Location permission and turn the phone's system Location switch on while scanning. Android requires both for BLE discovery on these versions; BridgePad does not request coordinates or collect or store location data.
+
+If pairing fails after the Flipper appears, retry from the app. A failed attempt times out after 30 seconds and returns to the scan screen instead of leaving a stale connection behind.
 
 ## Privacy and safety
 
