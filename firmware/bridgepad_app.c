@@ -1,5 +1,6 @@
 #include "bridgepad_core.h"
 #include "bridgepad_protocol.h"
+#include "bridgepad_startup.h"
 
 #include <bt/bt_service/bt.h>
 #include <furi.h>
@@ -43,7 +44,7 @@ typedef struct {
     Bt* bt;
     FuriHalBleProfileBase* serial_profile;
     FuriHalUsbInterface* previous_usb_config;
-    bool usb_started;
+    BridgepadStartup startup;
     bool exit_requested;
     bool display_ble_connected;
     bool display_usb_connected;
@@ -207,26 +208,46 @@ static void bridgepad_reclaim_serial_profile(BridgepadApp* app) {
     ble_profile_serial_notify_buffer_is_empty(app->serial_profile);
 }
 
-static bool bridgepad_start_usb(BridgepadApp* app) {
+static bool bridgepad_start_usb(void* context) {
+    BridgepadApp* app = context;
     app->previous_usb_config = furi_hal_usb_get_config();
     furi_hal_hid_set_state_callback(bridgepad_usb_state_callback, app);
     if(!furi_hal_usb_set_config(&usb_hid, (void*)&bridgepad_usb_config)) {
         furi_hal_hid_set_state_callback(NULL, NULL);
         return false;
     }
-    app->usb_started = true;
     bridgepad_core_set_usb_connected(&app->core, furi_hal_hid_is_connected(), furi_get_tick());
     return true;
 }
 
-static bool bridgepad_start_bluetooth(BridgepadApp* app) {
+static void bridgepad_stop_bluetooth(BridgepadApp* app) {
+    if(!app->bt) return;
+    bt_set_status_changed_callback(app->bt, NULL, NULL);
+    bt_disconnect(app->bt);
+    furi_delay_ms(200);
+    if(app->serial_profile) {
+        ble_profile_serial_set_event_callback(app->serial_profile, 0, NULL, NULL);
+        app->serial_profile = NULL;
+    }
+    bt_keys_storage_set_default_path(app->bt);
+    bt_profile_restore_default(app->bt);
+    furi_record_close(RECORD_BT);
+    app->bt = NULL;
+}
+
+static bool bridgepad_start_bluetooth(void* context) {
+    BridgepadApp* app = context;
     app->bt = furi_record_open(RECORD_BT);
+    if(!app->bt) return false;
     bt_set_status_changed_callback(app->bt, bridgepad_bt_status_callback, app);
     bt_disconnect(app->bt);
     furi_delay_ms(200);
     bt_keys_storage_set_storage_path(app->bt, APP_DATA_PATH("bridgepad.keys"));
     app->serial_profile = bt_profile_start(app->bt, ble_profile_serial, NULL);
-    if(!app->serial_profile) return false;
+    if(!app->serial_profile) {
+        bridgepad_stop_bluetooth(app);
+        return false;
+    }
     bridgepad_reclaim_serial_profile(app);
     furi_hal_bt_start_advertising();
     return true;
@@ -234,31 +255,39 @@ static bool bridgepad_start_bluetooth(BridgepadApp* app) {
 
 static void bridgepad_stop_hardware(BridgepadApp* app) {
     bridgepad_core_disarm(&app->core);
-    bridgepad_hid_release_all(app);
-    if(app->usb_started) {
+    if(app->startup.usb_started) {
+        bridgepad_hid_release_all(app);
         furi_hal_hid_set_state_callback(NULL, NULL);
         furi_hal_usb_set_config(app->previous_usb_config, NULL);
-        app->usb_started = false;
+        app->startup.usb_started = false;
     }
-    if(app->bt) {
-        bt_set_status_changed_callback(app->bt, NULL, NULL);
-        bt_disconnect(app->bt);
-        furi_delay_ms(200);
-        if(app->serial_profile) {
-            ble_profile_serial_set_event_callback(app->serial_profile, 0, NULL, NULL);
-            app->serial_profile = NULL;
-        }
-        bt_keys_storage_set_default_path(app->bt);
-        bt_profile_restore_default(app->bt);
-        furi_record_close(RECORD_BT);
-        app->bt = NULL;
+    bridgepad_stop_bluetooth(app);
+    app->startup.bluetooth_started = false;
+}
+
+static void bridgepad_update_startup_error(BridgepadApp* app) {
+    if(!app->startup.bluetooth_started) {
+        bridgepad_set_error(app, "BT busy: OK to retry");
+    } else if(!app->startup.usb_started) {
+        bridgepad_set_error(app, "USB busy: close qFlip");
+    } else {
+        bridgepad_clear_error(app);
     }
+}
+
+static void bridgepad_try_start_hardware(BridgepadApp* app) {
+    bridgepad_startup_try(
+        &app->startup, bridgepad_start_bluetooth, bridgepad_start_usb, app);
+    bridgepad_update_startup_error(app);
 }
 
 static bool bridgepad_app_init(BridgepadApp* app) {
     memset(app, 0, sizeof(*app));
+    bridgepad_startup_init(&app->startup);
     app->queue = furi_message_queue_alloc(BRIDGEPAD_QUEUE_DEPTH, sizeof(BridgepadEvent));
+    if(!app->queue) return false;
     app->display_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+    if(!app->display_mutex) return false;
     const BridgepadCoreIo io = {
         .context = app,
         .release_all = bridgepad_hid_release_all,
@@ -273,19 +302,14 @@ static bool bridgepad_app_init(BridgepadApp* app) {
     bridgepad_core_init(&app->core, &io);
 
     app->view_port = view_port_alloc();
+    if(!app->view_port) return false;
     view_port_draw_callback_set(app->view_port, bridgepad_draw_callback, app);
     view_port_input_callback_set(app->view_port, bridgepad_input_callback, app);
     app->gui = furi_record_open(RECORD_GUI);
+    if(!app->gui) return false;
     gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
 
-    if(!bridgepad_start_usb(app)) {
-        bridgepad_set_error(app, "USB mode is locked");
-        return false;
-    }
-    if(!bridgepad_start_bluetooth(app)) {
-        bridgepad_set_error(app, "Bluetooth unavailable");
-        return false;
-    }
+    bridgepad_try_start_hardware(app);
     return true;
 }
 
@@ -302,6 +326,10 @@ static void bridgepad_app_free(BridgepadApp* app) {
 static void bridgepad_handle_input(BridgepadApp* app, const InputEvent* input) {
     if(input->type != InputTypeShort) return;
     if(input->key == InputKeyOk) {
+        if(!bridgepad_startup_ready(&app->startup)) {
+            bridgepad_try_start_hardware(app);
+            return;
+        }
         bridgepad_clear_error(app);
         if(!bridgepad_core_toggle_arm(&app->core, furi_get_tick()) && !app->core.armed) {
             bridgepad_set_error(app, "Connect phone + USB");
@@ -359,10 +387,10 @@ static void bridgepad_handle_event(BridgepadApp* app, const BridgepadEvent* even
 int32_t bridgepad_app(void* context) {
     UNUSED(context);
     BridgepadApp* app = malloc(sizeof(BridgepadApp));
+    if(!app) return -1;
     const bool initialized = bridgepad_app_init(app);
-    bridgepad_refresh(app);
+    if(initialized) bridgepad_refresh(app);
 
-    if(!initialized) furi_delay_ms(1500);
     while(initialized && !app->exit_requested) {
         BridgepadEvent event;
         if(furi_message_queue_get(app->queue, &event, 100) == FuriStatusOk) {
