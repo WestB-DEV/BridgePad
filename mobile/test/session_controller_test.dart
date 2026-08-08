@@ -12,6 +12,7 @@ class FakeTransport implements BridgepadTransport {
   final writes = <BridgepadFrame>[];
   bool autoAck = true;
   int helloResponsesToDrop = 0;
+  int disconnectCalls = 0;
 
   @override
   Stream<bool> get connectionChanges => _connections.stream;
@@ -26,6 +27,7 @@ class FakeTransport implements BridgepadTransport {
 
   @override
   Future<void> disconnect() async {
+    disconnectCalls++;
     _connections.add(false);
   }
 
@@ -129,6 +131,25 @@ void main() {
       hasLength(2),
     );
     expect(controller.connectionState, BridgepadConnectionState.ready);
+  });
+
+  test('failed HELLO negotiation closes the partial BLE connection', () async {
+    controller.dispose();
+    transport.helloResponsesToDrop = 2;
+    controller = BridgepadSessionController(
+      transport,
+      heartbeatInterval: const Duration(days: 1),
+      commandTimeout: const Duration(milliseconds: 5),
+      helloAttempts: 2,
+    );
+
+    await expectLater(
+      controller.connect('device-1'),
+      throwsA(isA<TimeoutException>()),
+    );
+
+    expect(transport.disconnectCalls, 1);
+    expect(controller.connectionState, BridgepadConnectionState.disconnected);
   });
 
   test('text is sent sequentially in acknowledged protocol chunks', () async {

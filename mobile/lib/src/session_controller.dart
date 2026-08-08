@@ -78,6 +78,11 @@ class BridgepadSessionController extends ChangeNotifier {
       notifyListeners();
     } catch (error) {
       lastError = _friendlyError(error);
+      try {
+        await _transport.disconnect();
+      } catch (_) {
+        // Preserve the negotiation error; a partial link must not block retry.
+      }
       connectionState = BridgepadConnectionState.disconnected;
       notifyListeners();
       rethrow;
