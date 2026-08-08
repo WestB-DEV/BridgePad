@@ -12,6 +12,12 @@ abstract final class BridgepadBleUuids {
   static final rx = Uuid.parse('19ed82ae-ed21-4c9d-4145-228e62fe0000');
   static final tx = Uuid.parse('19ed82ae-ed21-4c9d-4145-228e61fe0000');
   static final flow = Uuid.parse('19ed82ae-ed21-4c9d-4145-228e63fe0000');
+  static final advertisedServices = List<Uuid>.unmodifiable([
+    Uuid.parse('00003080-0000-1000-8000-00805f9b34fb'),
+    Uuid.parse('00003081-0000-1000-8000-00805f9b34fb'),
+    Uuid.parse('00003082-0000-1000-8000-00805f9b34fb'),
+    Uuid.parse('00003083-0000-1000-8000-00805f9b34fb'),
+  ]);
 }
 
 class BridgepadBleDevice {
@@ -138,7 +144,7 @@ class BridgepadBleTransport implements BridgepadTransport {
 
   Stream<BridgepadBleDevice> scan() => _client
       .scanForDevices(
-        withServices: [BridgepadBleUuids.service],
+        withServices: BridgepadBleUuids.advertisedServices,
         scanMode: ScanMode.lowLatency,
         requireLocationServicesEnabled: false,
       )

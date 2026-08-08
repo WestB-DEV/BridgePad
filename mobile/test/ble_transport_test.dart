@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 class FakeBleClient implements BridgepadBleClient {
   final operations = <String>[];
   final notifications = StreamController<List<int>>.broadcast();
+  List<Uuid>? scannedServices;
   int negotiatedMtu = BridgepadBleTransport.preferredMtu;
   Completer<int>? pendingMtu;
   StreamController<ConnectionStateUpdate>? connectionUpdates;
@@ -45,7 +46,10 @@ class FakeBleClient implements BridgepadBleClient {
     required List<Uuid> withServices,
     required ScanMode scanMode,
     required bool requireLocationServicesEnabled,
-  }) => const Stream.empty();
+  }) {
+    scannedServices = withServices;
+    return const Stream.empty();
+  }
 
   @override
   Future<void> writeCharacteristicWithResponse(
@@ -82,6 +86,24 @@ void main() {
     await transport.dispose();
     await client.close();
   });
+
+  test(
+    'scans for Flipper serial advertisements, not its GATT service',
+    () async {
+      await transport.scan().drain<void>();
+
+      expect(client.scannedServices, [
+        Uuid.parse('00003080-0000-1000-8000-00805f9b34fb'),
+        Uuid.parse('00003081-0000-1000-8000-00805f9b34fb'),
+        Uuid.parse('00003082-0000-1000-8000-00805f9b34fb'),
+        Uuid.parse('00003083-0000-1000-8000-00805f9b34fb'),
+      ]);
+      expect(
+        client.scannedServices,
+        isNot(contains(BridgepadBleUuids.service)),
+      );
+    },
+  );
 
   test(
     'prepares Android MTU and notifications before reporting connected',
