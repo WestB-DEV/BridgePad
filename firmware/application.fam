@@ -7,7 +7,7 @@ App(
     fap_libs=["ble_profile"],
     sources=["*.c", "!tests"],
     stack_size=4 * 1024,
-    fap_version="0.1.4",
+    fap_version="0.1.5",
     fap_category="USB",
     fap_description="Authenticated BLE to USB keyboard and mouse bridge",
     fap_author="BridgePad Project",

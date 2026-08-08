@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5-test.1 - 2026-08-08
+
+### Fixed
+
+- The armed trackpad now owns touches inside its surface instead of accidentally scrolling the surrounding Android page.
+- Pointer movement is accumulated at 30 Hz and accelerated 2.4× so quick swipes no longer lose most of their motion.
+- Two-finger scrolling now follows the fingers' shared vertical movement independently from pointer movement.
+- The Android keyboard's Enter action now sends a USB HID Enter without requiring the keyboard to be collapsed.
+
 ## 0.1.4-test.1 - 2026-08-08
 
 ### Fixed

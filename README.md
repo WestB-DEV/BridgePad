@@ -4,10 +4,10 @@ BridgePad turns a Flipper Zero into an explicitly armed Bluetooth-to-USB keyboar
 
 ## Install the test build
 
-The current test release is `0.1.4-test.1`. Its version is included in every deliverable filename so APK and FAP builds cannot be confused.
+The current test release is `0.1.5-test.1`. Its version is included in every deliverable filename so APK and FAP builds cannot be confused.
 
-1. Copy `release/bridgepad-0.1.4-test.1.fap` to `apps/USB/` on the Flipper SD card with qFlipper.
-2. On Android, enable installation from your file manager and install `release/bridgepad-0.1.4-test.1-android-debug.apk`. Android will warn that this is a developer-signed sideloaded build.
+1. Copy `release/bridgepad-0.1.5-test.1.fap` to `apps/USB/` on the Flipper SD card with qFlipper.
+2. On Android, enable installation from your file manager and install `release/bridgepad-0.1.5-test.1-android-debug.apk`. Android will warn that this is a developer-signed sideloaded build.
 3. Connect the Flipper USB-C data cable to the target Mac, PC, or other USB host.
 4. Run **Apps → USB → BridgePad** on the Flipper. It temporarily takes over Bluetooth and USB, then restores both when it exits.
 5. Open BridgePad on Android, tap **Find BridgePad**, select the Flipper, and accept Android's pairing prompt.
