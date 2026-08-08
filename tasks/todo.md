@@ -37,6 +37,6 @@
 ## Phase 4: Decision and Delivery
 
 - [ ] Record the architecture decision and test evidence.
-- [ ] Review all changes and run mobile/firmware release gates.
+- [x] Review all changes and run mobile/firmware release gates.
 - [ ] Push the private experiment branch and publish test artifacts if approved.
 - [ ] Merge only proven improvements into `main`.
