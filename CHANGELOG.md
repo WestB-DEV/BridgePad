@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 - 2026-08-08
+
+### Fixed
+
+- Android now prepares BLE notifications and negotiates a 247-byte MTU before starting the BridgePad protocol handshake.
+- A lost first `HELLO` response is retried instead of immediately failing the connection.
+- Failed handshakes close partial GATT links and return to the scan screen so the next attempt starts cleanly.
+- Pairing is limited to 30 seconds, ignores bond events from other devices, and can be cancelled safely before retry.
+
 ## 0.1.1 - 2026-08-08
 
 ### Fixed

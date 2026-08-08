@@ -13,6 +13,10 @@ BridgePad turns a Flipper Zero into an explicitly armed Bluetooth-to-USB keyboar
 
 Press **Back** on the Flipper or **RELEASE ALL + DISARM** on the phone to stop input immediately. A BLE/USB disconnect, app lifecycle interruption, or five-second heartbeat loss also releases all keys and buttons.
 
+The Flipper can use Bluetooth and USB HID at the same time; that simultaneous connection is BridgePad's normal operating mode. Close qFlipper before launching BridgePad because qFlipper may keep the USB control interface busy.
+
+If Android pairing fails, leave BridgePad open on the Flipper, keep it near the phone, and retry from the app. A failed attempt now times out after 30 seconds and returns to the scan screen instead of leaving a stale connection behind.
+
 ## Privacy and safety
 
 - No account, analytics, advertising, Internet permission, clipboard history, or background clipboard access.
