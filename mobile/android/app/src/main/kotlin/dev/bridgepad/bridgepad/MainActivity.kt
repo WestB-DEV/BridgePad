@@ -20,10 +20,18 @@ class MainActivity : FlutterActivity() {
     private val permissionRequestCode = 4101
     private var permissionResult: MethodChannel.Result? = null
     private var bondResult: MethodChannel.Result? = null
+    private var bondDeviceId: String? = null
 
     private val bondReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return
+            val changedDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+            }
+            if (changedDevice?.address != bondDeviceId) return
             val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
             if (state == BluetoothDevice.BOND_BONDED) finishBond(true)
             if (state == BluetoothDevice.BOND_NONE) finishBond(false)
@@ -40,6 +48,7 @@ class MainActivity : FlutterActivity() {
         when (call.method) {
             "requestBlePermissions" -> requestBlePermissions(result)
             "bond" -> bond(call.argument<String>("deviceId"), result)
+            "cancelBond" -> cancelBond(result)
             else -> result.notImplemented()
         }
     }
@@ -105,6 +114,7 @@ class MainActivity : FlutterActivity() {
             return
         }
         bondResult = result
+        bondDeviceId = device.address
         val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(bondReceiver, filter, RECEIVER_NOT_EXPORTED)
@@ -112,7 +122,14 @@ class MainActivity : FlutterActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(bondReceiver, filter)
         }
-        if (!device.createBond()) finishBond(false)
+        if (device.bondState != BluetoothDevice.BOND_BONDING && !device.createBond()) {
+            finishBond(false)
+        }
+    }
+
+    private fun cancelBond(result: MethodChannel.Result) {
+        if (bondResult != null) finishBond(false)
+        result.success(null)
     }
 
     private fun finishBond(success: Boolean) {
@@ -123,6 +140,7 @@ class MainActivity : FlutterActivity() {
         }
         bondResult?.success(success)
         bondResult = null
+        bondDeviceId = null
     }
 
     override fun onDestroy() {
