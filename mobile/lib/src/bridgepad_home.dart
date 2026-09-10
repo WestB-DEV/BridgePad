@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import 'android_ble_platform.dart';
 import 'ble_transport.dart';
 import 'demo_transport.dart';
 import 'session_controller.dart';
+import 'remote_workspace.dart';
 
 class BridgepadHome extends StatefulWidget {
   const BridgepadHome({
@@ -25,7 +25,9 @@ class BridgepadHome extends StatefulWidget {
 
 class _BridgepadHomeState extends State<BridgepadHome>
     with WidgetsBindingObserver {
-  late final BridgepadBleTransport _bleTransport;
+  BridgepadBleTransport? _ownedBleTransport;
+  BridgepadBleTransport get _bleTransport =>
+      widget.bleTransport ?? (_ownedBleTransport ??= BridgepadBleTransport());
   late final AndroidBlePlatform _android;
   BridgepadSessionController? _session;
   StreamSubscription<BridgepadBleDevice>? _scan;
@@ -36,7 +38,6 @@ class _BridgepadHomeState extends State<BridgepadHome>
   @override
   void initState() {
     super.initState();
-    _bleTransport = widget.bleTransport ?? BridgepadBleTransport();
     _android = widget.androidPlatform;
     WidgetsBinding.instance.addObserver(this);
   }
@@ -136,7 +137,8 @@ class _BridgepadHomeState extends State<BridgepadHome>
     WidgetsBinding.instance.removeObserver(this);
     _scan?.cancel();
     _session?.dispose();
-    unawaited(_bleTransport.dispose());
+    final ble = widget.bleTransport ?? _ownedBleTransport;
+    if (ble != null) unawaited(ble.dispose());
     super.dispose();
   }
 
@@ -144,26 +146,29 @@ class _BridgepadHomeState extends State<BridgepadHome>
   Widget build(BuildContext context) {
     final session = _session;
     return Scaffold(
-      appBar: AppBar(
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('BridgePad'),
-            Text(
-              'PHONE → BLE → USB HID',
-              style: TextStyle(fontSize: 10, letterSpacing: 1.4),
+      // Keep the safety/status row, not decorative chrome, above a short IME viewport.
+      appBar: session != null && MediaQuery.viewInsetsOf(context).bottom > 0
+          ? null
+          : AppBar(
+              title: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('BridgePad'),
+                  Text(
+                    'PHONE → BLE → USB HID',
+                    style: TextStyle(fontSize: 10, letterSpacing: 1.4),
+                  ),
+                ],
+              ),
+              actions: [
+                if (session != null)
+                  IconButton(
+                    tooltip: 'Disconnect',
+                    onPressed: _disconnect,
+                    icon: const Icon(Icons.link_off),
+                  ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          if (session != null)
-            IconButton(
-              tooltip: 'Disconnect',
-              onPressed: _disconnect,
-              icon: const Icon(Icons.link_off),
-            ),
-        ],
-      ),
       body: SafeArea(
         child: session == null
             ? _ConnectionPanel(
@@ -174,7 +179,7 @@ class _BridgepadHomeState extends State<BridgepadHome>
                 onConnect: _connect,
                 onDemo: _startDemo,
               )
-            : _RemotePanel(session: session),
+            : RemoteWorkspace(session: session),
       ),
     );
   }
@@ -258,397 +263,6 @@ class _ConnectionPanel extends StatelessWidget {
           'Offline by design • no accounts • no clipboard history',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12),
-        ),
-      ],
-    );
-  }
-}
-
-class _RemotePanel extends StatefulWidget {
-  const _RemotePanel({required this.session});
-  final BridgepadSessionController session;
-
-  @override
-  State<_RemotePanel> createState() => _RemotePanelState();
-}
-
-class _RemotePanelState extends State<_RemotePanel> {
-  final _compose = TextEditingController();
-  final _live = TextEditingController();
-  final _focus = FocusNode();
-  final _modifiers = <int>{};
-
-  @override
-  void dispose() {
-    _compose.dispose();
-    _live.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _guard(Future<void> Function() action) async {
-    try {
-      await action();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-        ),
-      );
-    }
-  }
-
-  Future<void> _sendCompose() => _guard(() async {
-    final text = _compose.text;
-    if (text.isEmpty) return;
-    await widget.session.sendText(text);
-    _compose.clear();
-  });
-
-  Future<void> _paste() => _guard(() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text;
-    if (text != null) _compose.text = text;
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final session = widget.session;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
-        _StatusStrip(session: session),
-        if (!session.deviceStatus.isArmed)
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.secondary.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Text('Press OK on the Flipper to arm this session.'),
-          ),
-        const SizedBox(height: 12),
-        _Trackpad(session: session, guard: _guard),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _live,
-          focusNode: _focus,
-          enabled: session.canSend,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: const InputDecoration(
-            labelText: 'Live typing',
-            hintText: 'Tap here, then type…',
-            prefixIcon: Icon(Icons.keyboard),
-          ),
-          onChanged: (value) {
-            if (value.isEmpty) return;
-            _live.clear();
-            _guard(() => session.sendText(value));
-          },
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _compose,
-          minLines: 2,
-          maxLines: 5,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(
-            labelText: 'Compose and review',
-            helperText: 'Printable US-QWERTY ASCII • 4,096 characters max',
-            suffixIcon: IconButton(
-              tooltip: 'Read clipboard',
-              onPressed: _paste,
-              icon: const Icon(Icons.content_paste),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          onPressed: session.canSend ? _sendCompose : null,
-          icon: const Icon(Icons.send),
-          label: const Text('Send reviewed text'),
-        ),
-        const SizedBox(height: 12),
-        _KeyToolbar(
-          enabled: session.canSend,
-          modifiers: _modifiers,
-          onKey: (usage) => _guard(() => session.sendKey(usage)),
-          onModifier: (usage) => _guard(() async {
-            if (_modifiers.remove(usage)) {
-              await session.keyUp(usage);
-            } else {
-              await session.keyDown(usage);
-              _modifiers.add(usage);
-            }
-            setState(() {});
-          }),
-        ),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Theme.of(context).colorScheme.error,
-          ),
-          onPressed: () => _guard(() async {
-            await session.emergencyRelease();
-            _modifiers.clear();
-            setState(() {});
-          }),
-          icon: const Icon(Icons.pan_tool_outlined),
-          label: const Text('RELEASE ALL + DISARM'),
-        ),
-      ],
-    );
-  }
-}
-
-class _StatusStrip extends StatelessWidget {
-  const _StatusStrip({required this.session});
-  final BridgepadSessionController session;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: _Status('BLE', session.deviceStatus.isBleConnected)),
-        const SizedBox(width: 6),
-        Expanded(child: _Status('USB', session.deviceStatus.isUsbConnected)),
-        const SizedBox(width: 6),
-        Expanded(child: _Status('ARMED', session.deviceStatus.isArmed)),
-      ],
-    );
-  }
-}
-
-class _Status extends StatelessWidget {
-  const _Status(this.label, this.active);
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active
-        ? Theme.of(context).colorScheme.primary
-        : Theme.of(context).colorScheme.outline;
-    return Semantics(
-      label: '$label ${active ? 'ready' : 'not ready'}',
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: .1),
-          border: Border.all(color: color.withValues(alpha: .45)),
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Text(
-          '●  $label',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w700,
-            fontSize: 12,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Trackpad extends StatefulWidget {
-  const _Trackpad({required this.session, required this.guard});
-  final BridgepadSessionController session;
-  final Future<void> Function(Future<void> Function()) guard;
-
-  @override
-  State<_Trackpad> createState() => _TrackpadState();
-}
-
-class _TrackpadState extends State<_Trackpad> {
-  int _pointers = 0;
-  DateTime _lastMove = DateTime.fromMillisecondsSinceEpoch(0);
-  Offset _lastLongPressOffset = Offset.zero;
-
-  void _move(DragUpdateDetails details) {
-    final now = DateTime.now();
-    if (now.difference(_lastMove) < const Duration(milliseconds: 33)) return;
-    _lastMove = now;
-    if (_pointers >= 2) {
-      final amount = (-details.delta.dy / 2).round();
-      if (amount != 0) {
-        widget.guard(() => widget.session.scroll(amount.clamp(-127, 127)));
-      }
-    } else {
-      final dx = details.delta.dx.round().clamp(-127, 127);
-      final dy = details.delta.dy.round().clamp(-127, 127);
-      if (dx != 0 || dy != 0) {
-        widget.guard(() => widget.session.pointerMove(dx, dy));
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label:
-          'Mouse trackpad. Tap for left click, long press and move to drag, two fingers to scroll.',
-      child: Listener(
-        onPointerDown: (_) => setState(() => _pointers++),
-        onPointerUp: (_) =>
-            setState(() => _pointers = math.max(0, _pointers - 1)),
-        onPointerCancel: (_) =>
-            setState(() => _pointers = math.max(0, _pointers - 1)),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanUpdate: widget.session.canSend ? _move : null,
-          onTap: widget.session.canSend
-              ? () => widget.guard(() async {
-                  await widget.session.pointerButton(1, true);
-                  await widget.session.pointerButton(1, false);
-                })
-              : null,
-          onLongPressStart: widget.session.canSend
-              ? (_) {
-                  _lastLongPressOffset = Offset.zero;
-                  widget.guard(() => widget.session.pointerButton(1, true));
-                }
-              : null,
-          onLongPressMoveUpdate: widget.session.canSend
-              ? (details) {
-                  final delta = details.offsetFromOrigin - _lastLongPressOffset;
-                  _lastLongPressOffset = details.offsetFromOrigin;
-                  _move(
-                    DragUpdateDetails(
-                      globalPosition: details.globalPosition,
-                      delta: delta,
-                    ),
-                  );
-                }
-              : null,
-          onLongPressEnd: widget.session.canSend
-              ? (_) =>
-                    widget.guard(() => widget.session.pointerButton(1, false))
-              : null,
-          child: Container(
-            height: 190,
-            decoration: BoxDecoration(
-              color: const Color(0xff20262b),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-            ),
-            child: Stack(
-              children: [
-                const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.touch_app_outlined, size: 36),
-                      SizedBox(height: 8),
-                      Text('TRACKPAD', style: TextStyle(letterSpacing: 2)),
-                      Text(
-                        'tap • drag • two-finger scroll',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: TextButton(
-                    onPressed: widget.session.canSend
-                        ? () => widget.guard(() async {
-                            await widget.session.pointerButton(2, true);
-                            await widget.session.pointerButton(2, false);
-                          })
-                        : null,
-                    child: const Text('RIGHT CLICK'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _KeyToolbar extends StatelessWidget {
-  const _KeyToolbar({
-    required this.enabled,
-    required this.modifiers,
-    required this.onKey,
-    required this.onModifier,
-  });
-
-  final bool enabled;
-  final Set<int> modifiers;
-  final ValueChanged<int> onKey;
-  final ValueChanged<int> onModifier;
-
-  static const keys = <String, int>{
-    'Esc': 0x29,
-    'Tab': 0x2b,
-    'Enter': 0x28,
-    '⌫': 0x2a,
-    '←': 0x50,
-    '↑': 0x52,
-    '↓': 0x51,
-    '→': 0x4f,
-    'Home': 0x4a,
-    'End': 0x4d,
-    'PgUp': 0x4b,
-    'PgDn': 0x4e,
-    'F1': 0x3a,
-    'F2': 0x3b,
-    'F3': 0x3c,
-    'F4': 0x3d,
-    'F5': 0x3e,
-    'F6': 0x3f,
-    'F7': 0x40,
-    'F8': 0x41,
-    'F9': 0x42,
-    'F10': 0x43,
-    'F11': 0x44,
-    'F12': 0x45,
-  };
-
-  static const modifierKeys = <String, int>{
-    'Ctrl': 0xe0,
-    'Shift': 0xe1,
-    'Alt': 0xe2,
-    'Meta': 0xe3,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('KEYS', style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final entry in modifierKeys.entries)
-              FilterChip(
-                label: Text(entry.key),
-                selected: modifiers.contains(entry.value),
-                onSelected: enabled ? (_) => onModifier(entry.value) : null,
-              ),
-            for (final entry in keys.entries)
-              ActionChip(
-                label: Text(entry.key),
-                onPressed: enabled ? () => onKey(entry.value) : null,
-              ),
-          ],
         ),
       ],
     );

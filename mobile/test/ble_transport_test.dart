@@ -53,12 +53,6 @@ class FakeBleClient implements BridgepadBleClient {
     required List<int> value,
   }) async {}
 
-  @override
-  Future<void> writeCharacteristicWithoutResponse(
-    QualifiedCharacteristic characteristic, {
-    required List<int> value,
-  }) async {}
-
   Future<void> close() async {
     await connectionUpdates?.close();
     await notifications.close();

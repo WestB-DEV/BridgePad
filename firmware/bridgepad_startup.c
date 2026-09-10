@@ -1,7 +1,5 @@
 #include "bridgepad_startup.h"
 
-#include <stddef.h>
-
 void bridgepad_startup_init(BridgepadStartup* startup) {
     startup->bluetooth_started = false;
     startup->usb_started = false;

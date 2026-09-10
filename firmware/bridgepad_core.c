@@ -77,8 +77,7 @@ void bridgepad_core_disarm(BridgepadCore* core) {
     bridgepad_core_send_status(core, 0);
 }
 
-void bridgepad_core_set_ble_connected(BridgepadCore* core, bool connected, uint32_t now_ms) {
-    (void)now_ms;
+void bridgepad_core_set_ble_connected(BridgepadCore* core, bool connected) {
     if(core->ble_connected == connected) return;
     core->ble_connected = connected;
     core->has_last_sequence = false;
@@ -86,8 +85,7 @@ void bridgepad_core_set_ble_connected(BridgepadCore* core, bool connected, uint3
     bridgepad_core_send_status(core, 0);
 }
 
-void bridgepad_core_set_usb_connected(BridgepadCore* core, bool connected, uint32_t now_ms) {
-    (void)now_ms;
+void bridgepad_core_set_usb_connected(BridgepadCore* core, bool connected) {
     if(core->usb_connected == connected) return;
     core->usb_connected = connected;
     if(!connected) bridgepad_core_disarm(core);

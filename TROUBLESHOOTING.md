@@ -6,6 +6,6 @@
 - **BridgePad says `USB busy`:** Close qFlipper or any active USB/RPC session, then press OK on the Flipper to retry. BridgePad 0.1.1 and later stay open while USB is temporarily unavailable.
 - **BridgePad immediately returns to the app folder:** Replace older BridgePad builds with version 0.1.1 or later. Earlier builds treated a temporary USB/Bluetooth startup conflict as fatal.
 - **Input is ignored:** Both BLE and USB must be ready, then OK must be pressed on the Flipper for every session.
-- **Text is rejected:** V1 permits printable US-QWERTY ASCII only; line breaks, emoji, and accented characters are blocked. Use the Enter key control for a newline.
+- **Text is rejected:** 0.2.0 accepts printable US-QWERTY ASCII and line breaks, up to 4,096 characters. Emoji, accented characters, and other control characters remain unsupported. Compose line breaks become host Enter events; Send does not append another Enter.
 - **A modifier seems held:** Tap **RELEASE ALL + DISARM** or press Back on the Flipper. Disconnect and timeout paths also release everything.
 - **macOS keyboard setup appears:** Choose ANSI/US if prompted. BridgePad sends standard HID usages and does not impersonate a branded receiver.

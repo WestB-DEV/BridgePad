@@ -25,6 +25,15 @@ class BridgepadApp extends StatelessWidget {
         colorScheme: scheme,
         scaffoldBackgroundColor: background,
         useMaterial3: true,
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+        ),
         cardTheme: const CardThemeData(
           color: surface,
           margin: EdgeInsets.zero,

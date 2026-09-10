@@ -6,5 +6,5 @@ abstract interface class BridgepadTransport {
 
   Future<void> connect(String deviceId);
   Future<void> disconnect();
-  Future<void> write(Uint8List value, {bool withResponse = true});
+  Future<void> write(Uint8List value);
 }

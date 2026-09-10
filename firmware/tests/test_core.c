@@ -96,8 +96,8 @@ static BridgepadFrame frame(BridgepadOpcode opcode, uint16_t sequence, const uin
 }
 
 static void connect_and_arm(BridgepadCore* core, uint32_t now) {
-    bridgepad_core_set_ble_connected(core, true, now);
-    bridgepad_core_set_usb_connected(core, true, now);
+    bridgepad_core_set_ble_connected(core, true);
+    bridgepad_core_set_usb_connected(core, true);
     assert(bridgepad_core_toggle_arm(core, now));
     assert(bridgepad_core_is_armed(core));
 }
@@ -107,9 +107,9 @@ static void test_requires_both_connections_to_arm(void) {
     BridgepadCore core = make_core(&hardware);
 
     assert(!bridgepad_core_toggle_arm(&core, 100));
-    bridgepad_core_set_ble_connected(&core, true, 100);
+    bridgepad_core_set_ble_connected(&core, true);
     assert(!bridgepad_core_toggle_arm(&core, 100));
-    bridgepad_core_set_usb_connected(&core, true, 100);
+    bridgepad_core_set_usb_connected(&core, true);
     assert(bridgepad_core_toggle_arm(&core, 100));
 }
 
@@ -168,7 +168,7 @@ static void test_disconnect_releases_and_disarms(void) {
     BridgepadCore core = make_core(&hardware);
     connect_and_arm(&core, 100);
 
-    bridgepad_core_set_ble_connected(&core, false, 200);
+    bridgepad_core_set_ble_connected(&core, false);
 
     assert(!bridgepad_core_is_armed(&core));
     assert(hardware.release_all_count == 1);

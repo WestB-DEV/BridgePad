@@ -71,15 +71,28 @@ class TooSmallMtuBleClient implements BridgepadBleClient {
     QualifiedCharacteristic characteristic, {
     required List<int> value,
   }) async {}
-
-  @override
-  Future<void> writeCharacteristicWithoutResponse(
-    QualifiedCharacteristic characteristic, {
-    required List<int> value,
-  }) async {}
 }
 
 void main() {
+  testWidgets('full app fits a compact landscape keyboard viewport', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const BridgepadApp());
+    await tester.tap(find.text('Open hardware-free demo'));
+    await tester.pumpAndSettle();
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(740, 360);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 200);
+    addTearDown(tester.view.reset);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byTooltip('Release All + Disarm').hitTestable(),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Extra keys').hitTestable(), findsOneWidget);
+  });
+
   testWidgets('hardware-free demo opens the armed remote controls', (
     tester,
   ) async {
@@ -92,12 +105,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('TRACKPAD'), findsOneWidget);
-    expect(find.text('Send reviewed text'), findsOneWidget);
+    expect(find.byTooltip('Compose and review'), findsOneWidget);
     expect(find.byIcon(Icons.link_off), findsOneWidget);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -900));
-    await tester.pumpAndSettle();
-    expect(find.text('RELEASE ALL + DISARM'), findsOneWidget);
+    expect(find.byType(ListView), findsNothing);
+    expect(
+      find.byTooltip('Release All + Disarm').hitTestable(),
+      findsOneWidget,
+    );
   });
 
   testWidgets('failed hardware connection returns to a retryable scan screen', (

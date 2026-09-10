@@ -17,3 +17,8 @@ firmware/dist/
 *.apk
 *.jks
 *.keystore
+release/evidence/*.log
+.env
+.env.*
+*.pem
+*.key

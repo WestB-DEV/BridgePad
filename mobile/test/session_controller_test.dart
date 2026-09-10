@@ -33,7 +33,7 @@ class FakeTransport implements BridgepadTransport {
   }
 
   @override
-  Future<void> write(Uint8List value, {bool withResponse = true}) async {
+  Future<void> write(Uint8List value) async {
     final frame = BridgepadProtocol.decode(value);
     writes.add(frame);
     if (frame.opcode == BridgepadOpcode.hello) {
@@ -49,7 +49,9 @@ class FakeTransport implements BridgepadTransport {
       }
       emitStatus(ble: true, usb: true, armed: true, sequence: frame.sequence);
     }
-    if (autoAck) emitResult(BridgepadOpcode.ack, frame.sequence, BridgepadStatus.ok);
+    if (autoAck) {
+      emitResult(BridgepadOpcode.ack, frame.sequence, BridgepadStatus.ok);
+    }
   }
 
   void emitStatus({
@@ -191,6 +193,7 @@ void main() {
     transport.autoAck = false;
 
     final sending = controller.sendKey(0x28);
+    await Future<void>.delayed(Duration.zero);
     final frame = transport.writes.last;
     transport.emitResult(
       BridgepadOpcode.error,
@@ -202,13 +205,16 @@ void main() {
     expect(controller.lastError, contains('not armed'));
   });
 
-  test('disconnect resets device state and clears pending input state', () async {
-    await controller.connect('device-1');
-    transport.emitStatus(ble: false, usb: false, armed: false);
-    await transport.disconnect();
-    await Future<void>.delayed(Duration.zero);
+  test(
+    'disconnect resets device state and clears pending input state',
+    () async {
+      await controller.connect('device-1');
+      transport.emitStatus(ble: false, usb: false, armed: false);
+      await transport.disconnect();
+      await Future<void>.delayed(Duration.zero);
 
-    expect(controller.connectionState, BridgepadConnectionState.disconnected);
-    expect(controller.deviceStatus.isArmed, isFalse);
-  });
+      expect(controller.connectionState, BridgepadConnectionState.disconnected);
+      expect(controller.deviceStatus.isArmed, isFalse);
+    },
+  );
 }

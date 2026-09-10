@@ -49,18 +49,10 @@ abstract interface class BridgepadBleClient {
     QualifiedCharacteristic characteristic, {
     required List<int> value,
   });
-
-  Future<void> writeCharacteristicWithoutResponse(
-    QualifiedCharacteristic characteristic, {
-    required List<int> value,
-  });
 }
 
 class FlutterReactiveBleClient implements BridgepadBleClient {
-  FlutterReactiveBleClient([FlutterReactiveBle? ble])
-    : _ble = ble ?? FlutterReactiveBle();
-
-  final FlutterReactiveBle _ble;
+  final _ble = FlutterReactiveBle();
 
   @override
   Stream<DiscoveredDevice> scanForDevices({
@@ -99,12 +91,6 @@ class FlutterReactiveBleClient implements BridgepadBleClient {
     QualifiedCharacteristic characteristic, {
     required List<int> value,
   }) => _ble.writeCharacteristicWithResponse(characteristic, value: value);
-
-  @override
-  Future<void> writeCharacteristicWithoutResponse(
-    QualifiedCharacteristic characteristic, {
-    required List<int> value,
-  }) => _ble.writeCharacteristicWithoutResponse(characteristic, value: value);
 }
 
 class BridgepadBleTransport implements BridgepadTransport {
@@ -257,20 +243,13 @@ class BridgepadBleTransport implements BridgepadTransport {
   }
 
   @override
-  Future<void> write(Uint8List value, {bool withResponse = true}) async {
+  Future<void> write(Uint8List value) async {
     final characteristic = _rx;
     if (characteristic == null) throw StateError('BridgePad is not connected');
-    if (withResponse) {
-      await _client.writeCharacteristicWithResponse(
-        characteristic,
-        value: value,
-      );
-    } else {
-      await _client.writeCharacteristicWithoutResponse(
-        characteristic,
-        value: value,
-      );
-    }
+    await _client.writeCharacteristicWithResponse(
+      characteristic,
+      value: value,
+    );
   }
 
   @override

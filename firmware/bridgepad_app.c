@@ -1,4 +1,5 @@
 #include "bridgepad_core.h"
+#include "bridgepad_hid.h"
 #include "bridgepad_protocol.h"
 #include "bridgepad_startup.h"
 
@@ -104,7 +105,7 @@ static void bridgepad_hid_release_all(void* context) {
     UNUSED(context);
     furi_hal_hid_kb_release_all();
     furi_hal_hid_consumer_key_release_all();
-    furi_hal_hid_mouse_release(0);
+    furi_hal_hid_mouse_release(BRIDGEPAD_HID_MOUSE_ALL_BUTTONS);
 }
 
 static bool bridgepad_hid_text_ascii(void* context, const uint8_t* text, size_t length) {
@@ -122,12 +123,12 @@ static bool bridgepad_hid_text_ascii(void* context, const uint8_t* text, size_t 
 
 static bool bridgepad_hid_key_press(void* context, uint16_t keycode) {
     UNUSED(context);
-    return furi_hal_hid_kb_press(keycode);
+    return furi_hal_hid_kb_press(bridgepad_hid_sdk_keycode(keycode));
 }
 
 static bool bridgepad_hid_key_release(void* context, uint16_t keycode) {
     UNUSED(context);
-    return furi_hal_hid_kb_release(keycode);
+    return furi_hal_hid_kb_release(bridgepad_hid_sdk_keycode(keycode));
 }
 
 static bool bridgepad_hid_pointer_move(void* context, int8_t dx, int8_t dy) {
@@ -216,7 +217,7 @@ static bool bridgepad_start_usb(void* context) {
         furi_hal_hid_set_state_callback(NULL, NULL);
         return false;
     }
-    bridgepad_core_set_usb_connected(&app->core, furi_hal_hid_is_connected(), furi_get_tick());
+    bridgepad_core_set_usb_connected(&app->core, furi_hal_hid_is_connected());
     return true;
 }
 
@@ -362,17 +363,17 @@ static void bridgepad_handle_event(BridgepadApp* app, const BridgepadEvent* even
         break;
     case BridgepadEventBleConnected:
         bridgepad_reclaim_serial_profile(app);
-        bridgepad_core_set_ble_connected(&app->core, true, furi_get_tick());
+        bridgepad_core_set_ble_connected(&app->core, true);
         bridgepad_clear_error(app);
         break;
     case BridgepadEventBleDisconnected:
-        bridgepad_core_set_ble_connected(&app->core, false, furi_get_tick());
+        bridgepad_core_set_ble_connected(&app->core, false);
         break;
     case BridgepadEventUsbConnected:
-        bridgepad_core_set_usb_connected(&app->core, true, furi_get_tick());
+        bridgepad_core_set_usb_connected(&app->core, true);
         break;
     case BridgepadEventUsbDisconnected:
-        bridgepad_core_set_usb_connected(&app->core, false, furi_get_tick());
+        bridgepad_core_set_usb_connected(&app->core, false);
         break;
     case BridgepadEventBleData:
         bridgepad_handle_data(app, event);

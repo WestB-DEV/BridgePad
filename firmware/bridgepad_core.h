@@ -32,8 +32,8 @@ typedef struct {
 } BridgepadCore;
 
 void bridgepad_core_init(BridgepadCore* core, const BridgepadCoreIo* io);
-void bridgepad_core_set_ble_connected(BridgepadCore* core, bool connected, uint32_t now_ms);
-void bridgepad_core_set_usb_connected(BridgepadCore* core, bool connected, uint32_t now_ms);
+void bridgepad_core_set_ble_connected(BridgepadCore* core, bool connected);
+void bridgepad_core_set_usb_connected(BridgepadCore* core, bool connected);
 bool bridgepad_core_toggle_arm(BridgepadCore* core, uint32_t now_ms);
 void bridgepad_core_disarm(BridgepadCore* core);
 bool bridgepad_core_is_armed(const BridgepadCore* core);

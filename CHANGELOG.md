@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.0-test.1 - public controls preview, 2026-09-09
+
+Android package version `0.2.0+7`; firmware `0.2.0`. Based on main; the separate
+0.1.5 experimental BLE discovery and response-queue changes are not merged here.
+
+### Changed
+
+- Locked, keyboard-aware remote with a reachable Send action and expandable Keys panel.
+- Retained-focus Live Enter, multiline Compose validation, and one-shot/locked Super/Ctrl/Shift/Alt shortcuts.
+- Explicit trackpad gesture states, fractional movement accumulation, bounded delivery, precision/sensitivity controls, and latched Drag.
+
+### Fixed
+
+- Input transactions no longer interleave key press/release pairs or silently discard throttled pointer distance.
+- Disarm and connection faults invalidate queued input; safety releases bypass long text sends and heartbeat faults close the connection.
+- Firmware translates standalone modifiers correctly and releases all mouse buttons with the correct HID mask.
+
+### Verification
+
+- Automated and emulator demo checks are recorded in `tasks/controls-verification.md`. Physical phone, BLE/Flipper, and macOS/Windows/Linux host checks remain required before release.
+
 ## 0.1.2 - 2026-08-08
 
 ### Fixed
